@@ -1,195 +1,347 @@
 ================================================================================
-项目全景与架构指南 - 听见·鼓浪屿 (Unity 3D Client)
-更新时间：2026-03-26（基于当前代码库 e:\Gulangyu_3D 实际结构）
+项目全景与架构实况 - 听见·鼓浪屿（Unity 3D Client）
+更新时间：2026-03-29（基于当前代码库 e:\Gulangyu_3D 实际内容）
 ================================================================================
 
-1. 项目定位与边界
-本项目是 Unity 端数字孪生与交互仿真客户端，重点在“视障通行体验模拟 + 风险探测上报 + 空间音频反馈”。
-它并不承载完整导览业务后端，主业务后端在独立仓库 e:\my-gulangyu\backend。
-当前 e:\Gulangyu_3D\Backend 属于 Unity 项目的本地后端备份与实验链路。
+1. 项目定位
+本仓库是“听见·鼓浪屿”项目的 Unity 3D 数字孪生与仿真端，承担的不是通用 Web 业务，而是以下几类能力：
+- 场景化还原鼓浪屿局部建筑与道路环境
+- 视障通行交互模拟
+- 盲杖式空间探测与 3D 声音反馈
+- 危险触发采样与风险数据上报
+- A/B 路线实验代理运行与自动汇总
+
+它与主业务仓库 e:\my-gulangyu 的关系是：
+- Unity 负责 3D 场景、代理、碰撞、探测、仿真
+- Web/Backend 负责数据库、AI、路径算法、看板与汇总接口
 
 ================================================================================
-2. 目录结构与职责分层
+2. 当前目录结构与职责
 ================================================================================
 ${PROJECT_ROOT} (e:\Gulangyu_3D)
 ├── Assets/
+│   ├── 3D_Object/
+│   │   [7 个建筑模型资源目录，分别对应协和礼拜堂、许家园、黄荣远堂、
+│   │    海天堂构、天主堂、李传别宅、仰高别墅]
 │   ├── Scenes/
-│   │   └── SampleScene.unity            [主测试场景，当前唯一启用构建场景]
+│   │   ├── SampleScene.unity
+│   │   │   [当前主测试场景]
+│   │   └── SampleScene/
+│   │       [场景 NavMesh 资产]
 │   ├── Scripts/
-│   │   ├── ABTestController.cs          [A/B批量生成、运行统计、汇总上报]
-│   │   ├── DigitalCane.cs               [盲杖探测、3D音频、POST上报]
-│   │   ├── RouteFollower.cs             [调用主后端 /api/route 并按 Route Marker 导航]
-│   │   ├── HazardZone.cs                [场景危险触发区，向 DigitalCane 回传 hazard]
-│   │   ├── PlayerController.cs          [角色移动/自动导航开关]
-│   │   └── BuildingInteraction.cs       [建筑碰撞日志输出]
+│   │   ├── PlayerController.cs
+│   │   ├── DigitalCane.cs
+│   │   ├── HazardZone.cs
+│   │   ├── RouteFollower.cs
+│   │   ├── ABTestController.cs
+│   │   └── BuildingInteraction.cs
 │   ├── Prefabs/
-│   │   ├── Player.prefab                [玩家预制体]
-│   │   ├── Agent_A.prefab               [A组预制体]
-│   │   └── Agent_B.prefab               [B组预制体]
+│   │   ├── Player.prefab
+│   │   ├── Agent_A.prefab
+│   │   └── Agent_B.prefab
+│   ├── Physics_Materials/
+│   │   [楼梯、石材等物理材质]
 │   ├── Settings/
-│   │   └── URP-Balanced.asset           [URP 资源配置]
-│   └── TutorialInfo/                    [模板说明]
+│   │   [URP 渲染配置]
+│   └── TutorialInfo/
+│       [模板说明资源]
 ├── Backend/
-│   ├── main.py                          [FastAPI 接收风险上报，写CSV]
-│   ├── data_analysis.py                 [读取CSV并生成热力图]
-│   ├── accident_logs.csv                [风险日志数据]
-│   └── collision_heatmap.png            [分析输出图]
+│   ├── main.py
+│   │   [Unity 仓库内的本地简化后端，只做风险 CSV 记录]
+│   ├── data_analysis.py
+│   │   [CSV 风险热力分析]
+│   ├── accident_logs.csv
+│   ├── warning_logs.csv
+│   └── collision_heatmap.png
 ├── Packages/
-│   └── manifest.json                    [Unity包依赖清单]
-└── ProjectSettings/
-    ├── EditorBuildSettings.asset        [构建场景列表]
-    ├── ProjectVersion.txt               [Unity版本]
-    └── TagManager.asset                 [Tag/Layers配置]
+│   ├── manifest.json
+│   └── packages-lock.json
+├── ProjectSettings/
+│   ├── ProjectVersion.txt
+│   ├── EditorBuildSettings.asset
+│   ├── TagManager.asset
+│   └── 其他 Unity 工程设置
+└── all_code_unity.txt
+    [本文档]
 
-补充说明：
-- Library/、Logs/、Temp/ 为生成目录，不作为业务代码来源。
-- 业务脚本集中在 Assets/Scripts，排查行为优先从这里开始。
-
-================================================================================
-3. 入口、依赖与关键配置
-================================================================================
-3.1 场景入口与挂载关系
-- 构建入口场景：Assets/Scenes/SampleScene.unity（EditorBuildSettings 当前启用该场景）。
-- 场景中玩家对象（Capsule，Tag=Player）挂载：
-  - PlayerController（移动）
-  - DigitalCane（探测与上报）
-
-3.2 引擎与依赖
-- Unity Editor 版本：2022.3.62f3c1
-- 渲染管线：URP（com.unity.render-pipelines.universal 14.0.12）
-- 常用包：TextMeshPro、Timeline、UGUI、VisualScripting、Test Framework 等（详见 Packages/manifest.json）
-
-3.3 网络配置（高优先级）
-- DigitalCane.cs 代码默认 backendUrl：
-  http://127.0.0.1:8000/api/record_hazard
-- ABTestController 汇总上报地址：
-  http://127.0.0.1:8000/api/ab_test_summary
-- RouteFollower 取路地址基于：
-  http://127.0.0.1:8000/api/route
-- 测试前需确认后端已启动，否则会在 Console 出现
-  Cannot connect to destination host。
-
-3.4 Tag 配置现状
-- TagManager 现有业务相关 Tag：Stairs、Road_Stone
-- DigitalCane 脚本同时会识别：Stairs、Road_Stone、Road_Cement
-- 结论：若要触发 Road_Cement 逻辑，需在 TagManager 中补充该 Tag 并赋给对应Collider。
+补充事实：
+- Library、Logs、Temp 仍是 Unity 生成目录，不属于业务代码主体。
+- 业务脚本核心几乎全部集中在 Assets/Scripts。
 
 ================================================================================
-4. 核心模块与可追溯业务流
+3. 当前引擎、包与工程基础
 ================================================================================
-4.1 PlayerController.cs（移动控制）
-- 入口：FixedUpdate()
-- 行为：读取 Horizontal/Vertical 输入，计算 moveDirection，写入 rb.velocity。
-- 作用：确保角色在物理系统内稳定移动，供盲杖探测使用真实位置与朝向。
+3.1 Unity 版本
+- ProjectVersion.txt 当前记录：2022.3.62f3c1
 
-4.2 DigitalCane.cs（核心探测与反馈）
-- 数据模型：HazardData { x, y, z, obstacle_type }
-- 生命周期：
-  1) Start() 初始化 tagAudioMap（标签->音频）
-  2) Update() 执行双射线探测
-     - 前向射线：识别台阶/路面障碍
-     - 下向射线：未命中地面判定为 Drop-off
-  3) TryTriggerHazard() 冷却节流（cooldownTime）
-  4) PlaySpatialAudio() 在碰撞点创建临时AudioSource进行3D播放
-  5) PostHazardData() 用 UnityWebRequest 发送 JSON POST
-- 关键参数：
-  - forwardRayLength, downwardRayLength, cooldownTime
-  - minAudioDistance, maxAudioDistance
-  - backendUrl
-- 当前新增实验开关：
-  - enableForwardHazardScan
-  - enableDropOffScan
-- 作用：A/B 实验时可关闭 Drop-off 自动上报，避免统一噪声淹没路径安全差异
+3.2 主要包
+根据 Packages/manifest.json，当前关键依赖包括：
+- com.unity.ai.navigation
+- com.unity.render-pipelines.universal
+- com.unity.textmeshpro
+- com.unity.timeline
+- com.unity.ugui
+- com.unity.visualscripting
+- com.unity.test-framework
 
-4.3 HazardZone.cs（场景风险触发）
-- 入口：OnTriggerEnter(Collider other)
-- 行为：识别进入触发区的 Agent，按 hazardType 调用 DigitalCane.ReportHazard()
-- 特性：内置 reentryCooldown，避免同一 Agent 在短时间内重复刷同一危险区
-- 作用：用于按场景布局人为设计 A/B 风险差异，是当前实验区分 A/B 安全性的主要手段
-
-4.4 RouteFollower.cs（后端路径跟随）
-- 入口：StartRoute(startNodeId, endNodeId)
-- 行为：请求主后端 /api/route，读取 steps[].to_name，按场景同名 Route Marker 逐点导航
-- 关键状态：HasBegunNavigation，用于防止 ABTestController 在异步取路前误判“已到达”
-- 失败兜底：若取路失败或缺少 marker，则自动回退到 fallbackTarget
-
-4.5 BuildingInteraction.cs（辅助日志）
-- 入口：OnCollisionEnter(Collision collision)
-- 行为：与 Player 碰撞时输出建筑命中日志。
-- 作用：用于快速场景交互验证，不参与风险上报主链。
-
-4.6 ABTestController.cs（A/B 自动化主控）
-- StartABTest()：按组生成 Agent_A/Agent_B，并分配 group_A/group_B。
-- RunAndSubmitSummary()：统计完成时长、路径长度、hazard 触发次数。
-- PostSummary()：POST 到 /api/ab_test_summary。
-- 当前能力补充：
-  - group_B 可通过 RouteFollower 使用主后端 safest 路线
-  - overrideDigitalCaneScanSettings 可统一覆盖 A/B Agent 的 DigitalCane 开关
-  - enableDropOffScanForABAgents 默认可关闭，便于纯观察 HazardZone 带来的风险差异
-
-4.7 Backend/main.py（Unity本地后端）
-- 提供 /api/record_hazard
-- 请求体字段：x, y, z, obstacle_type
-- 行为：写入 accident_logs.csv
-
-4.8 Backend/data_analysis.py（离线分析）
-- 读取 accident_logs.csv
-- 统计高频碰撞区域并输出 collision_heatmap.png
-
-端到端业务流：
-玩家输入 -> PlayerController移动 -> DigitalCane射线命中/落空 ->
-TryTriggerHazard -> 播放3D音频 -> POST风险数据 -> Backend写CSV ->
-data_analysis.py 生成热力图
-
-A/B 实验业务流：
-ABTestController 生成 group_A/group_B -> group_B 通过 RouteFollower 调用主后端 /api/route ->
-Agent 按路径行走并统计 pathLength/completionTime -> HazardZone/DigitalCane 上报 hazard ->
-ABTestController 汇总 POST /api/ab_test_summary -> Web Dashboard 拉取 latest/history 展示
+3.3 渲染与导航
+- 当前项目使用 URP
+- 当前项目使用 NavMesh 进行自动导航
+- SampleScene 下已存在多份 NavMesh 资产，说明场景导航不是概念层，而是已做过实际烘焙
 
 ================================================================================
-5. 运行与测试前检查清单（含 A/B）
+4. 当前场景与资源事实
 ================================================================================
-1) 后端可用：
-   - 若接 Unity 内置后端：先启动 e:\Gulangyu_3D\Backend\main.py
-   - 若接主业务后端：先启动 e:\my-gulangyu\backend\main.py
-2) 接口地址一致：
-   - 检查 SampleScene 中 DigitalCane.backendUrl 与目标后端接口一致
-   - 检查 ABTestController.abSummaryUrl、groupBRouteApiBaseUrl 是否指向主业务后端
-3) Tag 完整：
-   - 至少保证 Stairs、Road_Stone 可用
-   - 需要 Road_Cement 时补Tag与Collider
-4) 音频资源绑定：
-   - audioStairs/audioDropOff/audioRoadStone/audioRoadCement/audioDefault 非空
-5) 场景对象：
-   - Player 挂载 Rigidbody + PlayerController + DigitalCane
-   - ABTestRoot 挂载 ABTestController，并配置 Agent_A/Agent_B prefab 与 Spawn/Target 点位
-   - group_B 路线依赖场景中与后端 steps.to_name 同名的 Route Marker
-6) AudioListener 唯一性：
-   - 场景中仅保留 Main Camera 一个 AudioListener
-7) Play 验收：
-   - Console 出现 summary submit success 代表 A/B 汇总链路打通
-8) 当前推荐实验口径：
-   - overrideDigitalCaneScanSettings = true
-   - enableForwardHazardScanForABAgents = true
-   - enableDropOffScanForABAgents = false
-   - 这样可优先观察 HazardZone 与路线差异，而不是被 Drop-off 噪声覆盖
+4.1 建筑资源
+Assets/3D_Object 下已存在 7 组建筑模型资源，每组包含：
+- 贴图 jpg
+- mtl
+- obj
+
+这 7 组建筑与 Web 端 buildings_data 的 7 个核心建筑在语义上是一一对应的。
+
+4.2 预制体
+当前可见预制体包括：
+- Player.prefab：用户或基础角色
+- Agent_A.prefab：A 组实验代理
+- Agent_B.prefab：B 组实验代理
+
+4.3 场景定位
+- 主要业务场景仍是 SampleScene.unity
+- EditorBuildSettings 在旧文档中已记录该场景为当前启用构建场景
+- RouteFollower 的运行依赖场景内存在与后端返回 to_name 同名的 Transform 标记点
 
 ================================================================================
-6. AI 接手修改准则（避免误改）
+5. 核心脚本当前实现
 ================================================================================
-1) 改探测规则、冷却、上报字段：只改 Assets/Scripts/DigitalCane.cs
-2) 改角色运动：只改 Assets/Scripts/PlayerController.cs
-3) 改后端取路与 marker 跟随：只改 Assets/Scripts/RouteFollower.cs
-4) 改场景危险区触发：只改 Assets/Scripts/HazardZone.cs，并同步检查 Collider Is Trigger
-5) 改 A/B 运行逻辑与汇总：只改 Assets/Scripts/ABTestController.cs
-6) 改构建入口场景：改 ProjectSettings/EditorBuildSettings.asset
-7) 改后端接收协议：同步 Unity 端 HazardData 与后端接口字段
-8) 改标签策略：同时修改 TagManager 与模型Collider标签
+5.1 PlayerController.cs
+职责：
+- 手动移动控制
+- 自动导航模式开关
+- 与 NavMeshAgent / Rigidbody 协同
+
+当前实现特点：
+- FixedUpdate() 中读取 Horizontal / Vertical 输入
+- 通过 rb.velocity 写入位移
+- autoNavMode 为 true 时跳过手动输入
+- SetDestination() 可给 NavMeshAgent 设置目标点
+
+它是角色移动基础，不负责风险判断，也不负责上报。
+
+5.2 DigitalCane.cs
+这是 Unity 端最关键的感知脚本之一。
+
+当前职责：
+- 正前方射线探测
+- 斜下方跌落探测
+- 冷却节流
+- 根据 hazard 类型播放 3D 空间音频
+- 向后端发送 JSON 风险日志
+- 记录当前 Agent 的 hazardTriggerCount
+
+当前可识别/触发的主要 hazard 类型包括：
+- Stairs
+- Road_Stone
+- Road_Cement
+- Drop-off
+
+当前重要字段包括：
+- forwardRayLength
+- downwardRayLength
+- downwardRayOriginOffset
+- backendUrl
+- agentGroup
+- cooldownTime
+- enableForwardHazardScan
+- enableDropOffScan
+- minAudioDistance
+- maxAudioDistance
+
+当前数据上报结构为 HazardData：
+- x
+- y
+- z
+- obstacle_type
+- client_source
+
+这意味着 Unity 上报的数据不仅有危险类型，也带有坐标和来源分组。
+
+5.3 HazardZone.cs
+这是场景内主动标记危险区域的脚本。
+
+当前职责：
+- 在 OnTriggerEnter 时识别进入区域的对象
+- 向其父对象上的 DigitalCane 发送 ReportHazard()
+- 通过 reentryCooldown 避免同一代理重复刷同一区域
+
+当前用途非常明确：
+- 把“场景设计的高风险区域”转化成可统计的 hazard 事件
+- 为 A/B 路线实验制造可量化差异
+
+5.4 RouteFollower.cs
+这是 Unity 端与主业务后端路径算法对接的桥梁。
+
+当前流程：
+1) StartRoute(startNodeId, endNodeId)
+2) GET 请求主后端 /api/route
+3) 读取 routes[0].steps[].to_name
+4) 在场景中按名称查找同名 Transform
+5) 逐个 waypoint 驱动 NavMeshAgent 导航
+6) 若失败则回退到 fallbackTarget 或 fallbackDestination
+
+当前关键状态：
+- HasBegunNavigation
+
+这个状态被 ABTestController 用来避免“路线还没取回来就被误判为已到达”。
+
+5.5 ABTestController.cs
+这是 Unity 端 A/B 实验总控器。
+
+当前职责：
+- 批量生成 group_A 与 group_B 代理
+- 给代理绑定分组名
+- 可统一覆盖 DigitalCane 的扫描配置
+- group_B 可接后端 safest/shortest 路线
+- 按运行期统计：
+  - agent 数量
+  - hazard 次数
+  - 平均路径长度
+  - 平均完成时间
+- 自动把汇总结果 POST 到 /api/ab_test_summary
+
+当前关键配置字段包括：
+- groupACount / groupBCount
+- groupASpeed / groupBSpeed
+- abSummaryUrl
+- summaryClientSource
+- useBackendRouteForGroupB
+- groupBRouteApiBaseUrl
+- bGroupStartNodeId / bGroupEndNodeId
+- groupBUserType
+- groupBStrategy
+- overrideDigitalCaneScanSettings
+- enableForwardHazardScanForABAgents
+- enableDropOffScanForABAgents
+
+当前汇总 payload 结构：
+- test_run_id
+- total_agents
+- group_a
+- group_b
+- client_source
+
+5.6 BuildingInteraction.cs
+职责简单：
+- 当带有 Player 标签的对象与建筑碰撞时输出日志
+
+它主要用于场景交互验证，不参与主数据闭环。
 
 ================================================================================
-7. 当前阶段判断（2026-03-26）
+6. Unity 内置 Backend 的定位
 ================================================================================
-- Unity 端已经从“基础交互原型期”进入“A/B 实验验证与稳定化阶段”。
-- A/B 自动生成、B 组 safest 路线、完成时间统计、风险汇总上报链路均已打通。
-- 最新联调结果已验证：A组危险率 1.0，B组危险率 0.0，且 B 组路径长于 A 组。
-- 当前更适合继续做的工作是：多轮复现、HazardZone 微调、录屏与展示打磨，而不是再重写核心链路。
+6.1 Backend/main.py
+当前仅提供：
+- POST /api/record_hazard
+
+当前行为：
+- 接收 x、y、z、obstacle_type
+- 记录到 accident_logs.csv
+- 控制台打印危险日志
+
+6.2 Backend 的实际定位
+这个 Backend 不是整个项目的主业务后端，只是 Unity 仓库里的本地轻量记录端。
+
+与 e:\my-gulangyu\backend 相比，它缺少：
+- SQLite 业务库
+- AI 对话
+- 路径规划
+- A/B 汇总接口
+- 管理后台接口
+- 热力图 API
+
+因此它更像：
+- 本地实验后端
+- 早期采样后端
+- 离线分析辅助端
+
+================================================================================
+7. 当前网络对接关系
+================================================================================
+脚本中默认对接的主后端地址为：
+- DigitalCane.backendUrl -> http://127.0.0.1:8000/api/record_hazard
+- ABTestController.abSummaryUrl -> http://127.0.0.1:8000/api/ab_test_summary
+- ABTestController.groupBRouteApiBaseUrl -> http://127.0.0.1:8000
+- RouteFollower.routeApiBaseUrl -> http://127.0.0.1:8000
+
+因此 Unity 当前并不是孤立运行，而是默认设计为与主业务后端同机联调。
+
+================================================================================
+8. 当前 A/B 实验机制
+================================================================================
+8.1 分组机制
+- group_A：通常使用普通目标点导航
+- group_B：可使用 RouteFollower 从主后端拉取 safer 路线
+
+8.2 指标机制
+Unity 当前能直接产生的实验指标包括：
+- agent_count
+- hazard_trigger_count
+- avg_path_length
+- avg_completion_time
+
+8.3 实验运行链路
+1) StartABTest()
+2) 生成 A/B 代理
+3) 代理行走
+4) DigitalCane / HazardZone 触发 hazard
+5) 统计每个代理路径长度与完成时间
+6) 聚合为 group_a / group_b 指标
+7) POST 到主业务后端
+
+8.4 当前实验意义
+Unity 端承担的不是“把 A/B 结果展示出来”，而是“生成可量化的 A/B 原始行为数据”。
+结果展示发生在 Web 仓库的策展看板中。
+
+================================================================================
+9. 当前项目已经实现的能力
+================================================================================
+从当前代码与资源可以直接确认 Unity 端已经具备：
+- 7 个核心建筑的 3D 资源承载
+- NavMesh 自动导航
+- 手动控制与自动导航并存
+- 盲杖前向探测
+- 跌落探测
+- 3D 空间提示音播放
+- 危险坐标上报
+- 场景危险区触发
+- A/B 代理批量生成
+- B 组接主后端 safest/shortest 路线
+- 自动汇总实验指标到主后端
+
+================================================================================
+10. 当前代码状态的关键事实
+================================================================================
+- Unity 的主要业务价值已经从“单机场景演示”扩展到了“主后端联动实验端”
+- RouteFollower 说明 Unity 已经开始消费主后端算法，不再是纯本地逻辑
+- ABTestController 说明 Unity 已具备自动实验能力，而不是只能手工试玩
+- DigitalCane 当前既负责本地声反馈，也负责云端数据回传
+- Unity 仓库内的 Backend 仍然存在，但它不是当前整个系统的唯一真实后端
+
+================================================================================
+11. 与主业务仓库的接口关系
+================================================================================
+当前 Unity -> Web/Backend 的主要对接接口有：
+- /api/record_hazard
+- /api/ab_test_summary
+- /api/route
+
+数据流关系为：
+- Unity 上报 hazard 给主后端
+- Unity 请求 safest 路线自主管理代理导航
+- Unity 把 A/B 汇总交给主后端入库
+- 主后端再把这些数据展示到 Web 看板
+
+================================================================================
+12. 当前文档用途
+================================================================================
+本文档用于让不了解 Unity 项目历史的 AI 或开发者，在不连接 GitHub 历史的情况下，直接理解 e:\Gulangyu_3D 当前的场景资源、脚本职责、实验链路、接口依赖、与主业务后端的真实关系。
