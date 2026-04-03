@@ -298,7 +298,7 @@ public class ABTestController : MonoBehaviour
             count++;
             if (runtime.cane != null)
             {
-                hazardCount += runtime.cane.hazardTriggerCount;
+                hazardCount += runtime.cane.hazardTriggerCount > 0 ? 1 : 0;
             }
 
             pathLengthSum += runtime.pathLength;
