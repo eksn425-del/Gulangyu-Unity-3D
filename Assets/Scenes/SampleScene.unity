@@ -1850,8 +1850,8 @@ MonoBehaviour:
   spawnB: {fileID: 517061603}
   targetA: {fileID: 1913029023}
   targetB: {fileID: 1036070925}
-  groupACount: 12
-  groupBCount: 12
+  groupACount: 10
+  groupBCount: 10
   groupASpeed: 3.5
   groupBSpeed: 3
   spawnSpacing: 1.2
